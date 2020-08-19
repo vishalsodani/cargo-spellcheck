@@ -136,38 +136,26 @@ impl<'s> Iterator for Warp<'s> {
 
 fn reflow_inner<'s>(
     origin: ContentOrigin,
-    chunk: &'s CheckableChunk,
+    s: &'s str,
     range: Range,
     unbreakable_ranges: &[Range],
-) -> Vec<Suggestion<'s>> {
+) -> Option<String> {
     let mut warper = Warp {
-        s: chunk.as_str(),
+        s,
         range,
         unbreakable_ranges: unbreakable_ranges.to_vec(),
     };
+    let mut acc = String::with_capacity(512);
     for (lineno, content, range) in warper {
         unimplemented!("...")
     }
-    let replacement = unimplemented!();
-    let span = unimplemented!();
-    vec![Suggestion {
-        detector: Detector::Reflow,
-        origin,
-        chunk,
-        span,
-        range,
-        replacements: vec![replacement],
-        description: None,
-    }]
+    Some(acc)
 }
 
 /// Reflow the documenation such that a maximum colomn constraint is met.
 #[allow(unused)]
 fn reflow<'s>(origin: ContentOrigin, chunk: &'s CheckableChunk) -> Vec<Suggestion<'s>> {
     let parser = Parser::new_ext(chunk.as_str(), Options::all());
-
-    let rust_fence =
-        pulldown_cmark::CodeBlockKind::Fenced(pulldown_cmark::CowStr::Borrowed("rust"));
 
     let mut paragraph = 0usize;
     let mut unbreakable_stack: Vec<Range> = Vec::with_capacity(16); // no more than 16 items will be nested, commonly it's 2 or 3
@@ -181,12 +169,23 @@ fn reflow<'s>(origin: ContentOrigin, chunk: &'s CheckableChunk) -> Vec<Suggestio
                 start: paragraph,
                 end,
             };
-            acc.extend(reflow_inner(
+            if let Some(replacement) = reflow_inner(
                 origin.clone(),
-                chunk,
-                range,
+                chunk.as_str(),
+                range.clone(),
                 unbreakables.as_slice(),
-            ));
+            ) {
+                acc.push(Suggestion {
+                    chunk,
+                    detector: Detector::Reflow,
+                    origin: origin.clone(),
+                    description: None,
+                    range: range.clone(),
+                    replacements: vec![replacement],
+                    span: unimplemented!("Obtain the span"),
+                })
+            }
+
             end // a new beginning (maybe)
         };
 
@@ -228,7 +227,7 @@ fn reflow<'s>(origin: ContentOrigin, chunk: &'s CheckableChunk) -> Vec<Suggestio
                     }
                     Tag::Paragraph => {
                         // regular end of paragraph
-                        paragraph = store(paragraph, unbreakables.as_slice());
+                        paragraph = store(cover.end, unbreakables.as_slice());
                     }
                     _ => {
                         paragraph = cover.end;
@@ -247,11 +246,11 @@ fn reflow<'s>(origin: ContentOrigin, chunk: &'s CheckableChunk) -> Vec<Suggestio
                 // ignored
             }
             Event::HardBreak => {
-                paragraph = store(paragraph, unbreakables.as_slice());
+                paragraph = store(cover.end, unbreakables.as_slice());
             }
             Event::Rule => {
                 // @todo how to proceed to past this? do all paragraphs end before
-                paragraph = store(paragraph, unbreakables.as_slice());
+                paragraph = store(cover.end, unbreakables.as_slice());
             }
             Event::TaskListMarker(_b) => {
                 // ignored
